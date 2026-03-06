@@ -118,11 +118,8 @@ class AuthService:
             flow["user_code"],
         )
 
-        # 사용자 로그인 대기 (블로킹)
-        result = self._app.acquire_token_by_device_flow(
-            flow,
-            exit_condition=msal.PublicClientApplication.WAIT_FOR_USER,
-        )
+        # 사용자 로그인 대기 (블로킹 — exit_condition 없이 호출하면 완료까지 대기)
+        result = self._app.acquire_token_by_device_flow(flow)
 
         if "access_token" not in result:
             err = result.get("error_description") or result.get("error") or "알 수 없는 오류"

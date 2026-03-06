@@ -37,7 +37,7 @@ _CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"  # Microsoft Office
 
 _SCOPES = [
     "https://graph.microsoft.com/Sites.Read.All",
-    "offline_access",
+    # offline_access, profile, openid 는 MSAL이 자동 추가하는 예약 스코프 — 직접 명시 금지
 ]
 
 _APPDATA = os.environ.get("APPDATA", os.path.expanduser("~"))

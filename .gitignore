@@ -17,3 +17,9 @@ desktop.ini
 
 # 개인 설정 (레지스트리에 저장되므로 파일 불필요)
 *.user
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

@@ -216,6 +216,26 @@ class TestAuthService(unittest.TestCase):
         guid = "12345678-1234-1234-1234-123456789012"
         self.assertEqual(AuthService._normalize_tenant(guid), guid)
 
+    def test_extract_host(self) -> None:
+        from services.auth_service import AuthService
+        result = AuthService._extract_host(
+            "https://ati5344.sharepoint.com/sites/atimarketing"
+        )
+        self.assertEqual(result, "https://ati5344.sharepoint.com")
+
+    def test_scopes_use_sharepoint_host(self) -> None:
+        """스코프가 SharePoint 호스트 기반으로 생성되는지 확인."""
+        from services.auth_service import AuthService
+        with patch("msal.PublicClientApplication"), \
+             patch("msal.SerializableTokenCache"):
+            svc = AuthService.__new__(AuthService)
+            svc._tenant_id = "ati5344.onmicrosoft.com"
+            svc._sharepoint_host = "https://ati5344.sharepoint.com"
+            svc._scopes = [f"{svc._sharepoint_host}/AllSites.Read"]
+            svc._cache = MagicMock()
+            svc._app = MagicMock()
+            self.assertIn("https://ati5344.sharepoint.com/AllSites.Read", svc._scopes)
+
     def test_acquire_token_silent_no_account(self) -> None:
         """캐시에 계정 없으면 None 반환."""
         from services.auth_service import AuthService
@@ -226,6 +246,7 @@ class TestAuthService(unittest.TestCase):
             svc = AuthService.__new__(AuthService)
             svc._app = mock_app_inst
             svc._cache = MagicMock()
+            svc._scopes = ["https://ati5344.sharepoint.com/AllSites.Read"]
             result = svc.acquire_token_silent()
             self.assertIsNone(result)
 

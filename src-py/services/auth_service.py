@@ -30,15 +30,16 @@ from typing import Callable, Dict, Optional
 
 import msal  # type: ignore
 
-# Microsoft 공개 클라이언트 ID (Office 앱 공용, 별도 앱 등록 불필요)
-# 출처: https://learn.microsoft.com/en-us/azure/active-directory/develop/
-#        reference-app-manifest (Microsoft Office 클라이언트 앱)
-_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"  # Microsoft Office
+# Azure CLI 공개 클라이언트 ID
+# 출처: https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli
+# Azure CLI는 SharePoint 리소스 스코프에 대해 사전 승인되어 있어 AADSTS65002 미발생
+_CLIENT_ID = "04b07795-8542-4c45-a7e5-921ad3d5b33d"  # Microsoft Azure CLI
 
-_SCOPES = [
-    "https://graph.microsoft.com/Sites.Read.All",
-    # offline_access, profile, openid 는 MSAL이 자동 추가하는 예약 스코프 — 직접 명시 금지
-]
+# SharePoint 리소스 직접 스코프 — 테넌트별로 동적으로 구성
+# _SCOPES는 AuthService.__init__ 에서 site_url 기반으로 설정됨
+# 형식: https://{tenant}.sharepoint.com/AllSites.Read
+# offline_access, profile, openid 는 MSAL이 자동 추가하는 예약 스코프 — 직접 명시 금지
+_SCOPES_TEMPLATE = "{sharepoint_host}/AllSites.Read"
 
 _APPDATA = os.environ.get("APPDATA", os.path.expanduser("~"))
 _CACHE_DIR = os.path.join(_APPDATA, "EquipSpecTool")
@@ -58,14 +59,23 @@ class AuthService:
 
     Parameters
     ----------
-    tenant_id : str
-        SharePoint 테넌트 도메인 또는 Azure AD 테넌트 ID.
-        예) "ati5344.sharepoint.com" → "ati5344.onmicrosoft.com" 으로 변환
-        또는 직접 테넌트 ID(GUID) 입력 가능.
+    site_url : str
+        SharePoint 사이트 루트 URL
+        예) https://ati5344.sharepoint.com/sites/atimarketing
     """
 
-    def __init__(self, tenant_id: str) -> None:
-        self._tenant_id = self._normalize_tenant(tenant_id)
+    def __init__(self, site_url: str) -> None:
+        """
+        Parameters
+        ----------
+        site_url : str
+            SharePoint 사이트 루트 URL
+            예) https://ati5344.sharepoint.com/sites/atimarketing
+        """
+        self._tenant_id = self._normalize_tenant(site_url)
+        self._sharepoint_host = self._extract_host(site_url)
+        # SharePoint 리소스 직접 스코프 (테넌트별 동적 구성)
+        self._scopes = [_SCOPES_TEMPLATE.format(sharepoint_host=self._sharepoint_host)]
         self._cache = msal.SerializableTokenCache()
         self._load_cache()
         self._app = msal.PublicClientApplication(
@@ -86,7 +96,7 @@ class AuthService:
         accounts = self._app.get_accounts()
         if not accounts:
             return None
-        result = self._app.acquire_token_silent(_SCOPES, account=accounts[0])
+        result = self._app.acquire_token_silent(self._scopes, account=accounts[0])
         if result and "access_token" in result:
             self._save_cache()
             return result["access_token"]
@@ -108,7 +118,7 @@ class AuthService:
         반환값: access_token 문자열
         예외: AuthError (실패 또는 타임아웃)
         """
-        flow = self._app.initiate_device_flow(scopes=_SCOPES)
+        flow = self._app.initiate_device_flow(scopes=self._scopes)
         if "user_code" not in flow:
             raise AuthError(f"Device Flow 시작 실패: {flow.get('error_description', '알 수 없는 오류')}")
 
@@ -163,6 +173,20 @@ class AuthService:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_host(site_url: str) -> str:
+        """
+        SharePoint 사이트 URL에서 호스트 부분만 추출.
+        예) https://ati5344.sharepoint.com/sites/atimarketing
+              → https://ati5344.sharepoint.com
+        """
+        url = site_url.strip()
+        if "://" in url:
+            scheme, rest = url.split("://", 1)
+            host = rest.split("/")[0]
+            return f"{scheme}://{host}"
+        return url
 
     @staticmethod
     def _normalize_tenant(tenant_id: str) -> str:

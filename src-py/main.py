@@ -159,6 +159,12 @@ class App:
         if self._sp_service is None:
             return []
         results = self._sp_service.search(keyword)
+        # 결과가 없고 에러가 있으면 UI 스레드에서 경고 표시
+        if not results and self._sp_service.last_error:
+            err_msg = self._sp_service.last_error
+            self._root.after(0, lambda: messagebox.showerror(
+                "SharePoint 연결 오류", err_msg
+            ))
         for rec in results:
             self._cache.put(rec)
         return results

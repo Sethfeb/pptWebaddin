@@ -190,6 +190,38 @@ class TestSharePointUtils(unittest.TestCase):
 
 
 # ──────────────────────────────────────────────────────────────────────
+# SettingsWindow URL 검증 테스트
+# ──────────────────────────────────────────────────────────────────────
+
+class TestUrlValidation(unittest.TestCase):
+    def setUp(self) -> None:
+        from views.settings_window import _validate_sharepoint_url
+        self._validate = _validate_sharepoint_url
+
+    def test_valid_sites_url(self) -> None:
+        self.assertEqual(self._validate("https://ati5344.sharepoint.com/sites/atimarketing"), "")
+
+    def test_valid_teams_url(self) -> None:
+        self.assertEqual(self._validate("https://ati5344.sharepoint.com/teams/myteam"), "")
+
+    def test_empty_url_allowed(self) -> None:
+        self.assertEqual(self._validate(""), "")
+
+    def test_share_link_blocked(self) -> None:
+        url = "https://ati5344.sharepoint.com/:l:/s/atimarketing/JAC99AA5NEN0TqtYXt9pFPKhAeDLHmytJ6msR9WFCLJFlqs?e=NCyXyE"
+        err = self._validate(url)
+        self.assertIn("공유 링크", err)
+
+    def test_http_blocked(self) -> None:
+        err = self._validate("http://ati5344.sharepoint.com/sites/atimarketing")
+        self.assertIn("https://", err)
+
+    def test_wrong_path_blocked(self) -> None:
+        err = self._validate("https://ati5344.sharepoint.com/")
+        self.assertNotEqual(err, "")
+
+
+# ──────────────────────────────────────────────────────────────────────
 # PptService 테스트 (COM 격리)
 # ──────────────────────────────────────────────────────────────────────
 

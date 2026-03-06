@@ -7,11 +7,41 @@ settings_window.py
   - 캐시 TTL (초)
   - 시작 시 전체 데이터 프리페치 여부
 """
+import re
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable
 
 import settings as cfg
+
+# SharePoint 공유 링크 패턴 (/:l:/, /:f:/, /:b:/ 등)
+_SHARE_LINK_RE = re.compile(r"sharepoint\.com/:[a-z]:/")
+# 올바른 사이트 URL 패턴: .../sites/xxx 또는 .../teams/xxx
+_SITE_URL_RE = re.compile(r"sharepoint\.com/(sites|teams)/[^/?#]+", re.IGNORECASE)
+
+
+def _validate_sharepoint_url(url: str) -> str:
+    """
+    URL 형식 검증.
+    반환값: "" (정상) 또는 오류 메시지 문자열
+    """
+    if not url:
+        return ""  # 빈 값은 허용 (미설정 상태)
+    if not url.startswith("https://"):
+        return "URL은 https:// 로 시작해야 합니다."
+    if _SHARE_LINK_RE.search(url):
+        return (
+            "공유 링크(/:l:/ 등)는 사용할 수 없습니다.\n\n"
+            "SharePoint 사이트 루트 URL을 입력하세요.\n"
+            "예) https://ati5344.sharepoint.com/sites/atimarketing"
+        )
+    if "sharepoint.com" in url and not _SITE_URL_RE.search(url):
+        return (
+            "SharePoint 사이트 URL 형식이 올바르지 않습니다.\n\n"
+            "올바른 형식: https://{테넌트}.sharepoint.com/sites/{사이트명}\n"
+            "예) https://ati5344.sharepoint.com/sites/atimarketing"
+        )
+    return ""
 
 
 class SettingsWindow(tk.Toplevel):
@@ -59,7 +89,7 @@ class SettingsWindow(tk.Toplevel):
         )
         ttk.Label(
             frame,
-            text="예) https://contoso.sharepoint.com/sites/factory",
+            text="예) https://ati5344.sharepoint.com/sites/atimarketing  (사이트 루트 URL)",
             foreground="gray",
         ).grid(row=1, column=1, sticky=tk.W, padx=12, pady=0)
 
@@ -102,6 +132,12 @@ class SettingsWindow(tk.Toplevel):
     def _do_save(self) -> None:
         url = self._url_var.get().strip()
         ttl_str = self._ttl_var.get().strip()
+
+        # URL 형식 검증
+        url_err = _validate_sharepoint_url(url)
+        if url_err:
+            messagebox.showerror("URL 오류", url_err, parent=self)
+            return
 
         try:
             ttl = int(ttl_str)

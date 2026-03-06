@@ -100,6 +100,7 @@ class SharePointService:
             예) https://contoso.sharepoint.com/sites/factory
         """
         self._site_url = site_url.rstrip("/")
+        self._last_error: str = ""
         self._session, self._auth_ok = _make_session()
         if not self._auth_ok:
             print("[EquipSpec][WARN] Windows 통합 인증 패키지 없음 - 익명 요청으로 진행")
@@ -159,15 +160,46 @@ class SharePointService:
     # Internal
     # ------------------------------------------------------------------
 
+    @property
+    def last_error(self) -> str:
+        """마지막 요청 오류 메시지. 정상이면 빈 문자열."""
+        return self._last_error
+
     def _get_items(self, endpoint: str) -> List[SpecRecord]:
         """GET 요청 실행 후 SpecRecord 목록 반환. 오류 시 빈 목록."""
+        self._last_error = ""
         try:
             resp = self._session.get(endpoint, timeout=_TIMEOUT_SEC)
             resp.raise_for_status()
             return _parse_items(resp.json())
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else "?"
+            if status == 401:
+                self._last_error = f"인증 실패 (HTTP 401) — SharePoint 로그인 권한을 확인하세요."
+            elif status == 403:
+                self._last_error = f"접근 거부 (HTTP 403) — 리스트 읽기 권한이 없습니다."
+            elif status == 404:
+                self._last_error = (
+                    f"리스트를 찾을 수 없습니다 (HTTP 404).\n"
+                    f"사이트 URL이 올바른지, '{_LIST_NAME}' 리스트가 존재하는지 확인하세요."
+                )
+            else:
+                self._last_error = f"HTTP 오류 {status}: {exc}"
+            print(f"[EquipSpec][ERROR] {self._last_error}")
+            return []
+        except requests.exceptions.ConnectionError as exc:
+            self._last_error = f"연결 실패 — URL이 올바른지, 네트워크를 확인하세요.\n({exc})"
+            print(f"[EquipSpec][ERROR] {self._last_error}")
+            return []
+        except requests.exceptions.Timeout:
+            self._last_error = f"요청 시간 초과 ({_TIMEOUT_SEC}초) — 네트워크 상태를 확인하세요."
+            print(f"[EquipSpec][ERROR] {self._last_error}")
+            return []
         except requests.exceptions.RequestException as exc:
-            print(f"[EquipSpec][ERROR] SharePoint request failed: {exc}")
+            self._last_error = f"요청 오류: {exc}"
+            print(f"[EquipSpec][ERROR] {self._last_error}")
             return []
         except (ValueError, KeyError) as exc:
-            print(f"[EquipSpec][ERROR] JSON parse failed: {exc}")
+            self._last_error = f"응답 파싱 오류: {exc}"
+            print(f"[EquipSpec][ERROR] {self._last_error}")
             return []

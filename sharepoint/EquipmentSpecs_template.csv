@@ -1,0 +1,16 @@
+EquipID,ShortCode,SpecName,SpecValue,Unit,Revision
+CONV-001,!conv001_speed,컨베이어 속도,15,m/min,1
+CONV-001,!conv001_width,컨베이어 폭,800,mm,1
+CONV-001,!conv001_load,최대 적재 하중,500,kg,1
+CONV-001,!conv001_motor,모터 출력,7.5,kW,1
+PUMP-001,!pump001_flow,펌프 유량,120,L/min,1
+PUMP-001,!pump001_head,펌프 양정,25,m,1
+PUMP-001,!pump001_power,펌프 소비전력,5.5,kW,1
+PUMP-001,!pump001_rpm,펌프 회전수,1450,RPM,1
+ROBOT-001,!robot001_reach,로봇 최대 도달 거리,1400,mm,1
+ROBOT-001,!robot001_payload,로봇 가반 하중,10,kg,1
+ROBOT-001,!robot001_repeat,로봇 반복 정밀도,±0.05,mm,1
+ROBOT-001,!robot001_dof,로봇 자유도,6,축,1
+TANK-001,!tank001_vol,탱크 용량,5000,L,1
+TANK-001,!tank001_press,탱크 설계 압력,0.5,MPa,1
+TANK-001,!tank001_temp,탱크 설계 온도,80,°C,1

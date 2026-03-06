@@ -1,0 +1,19 @@
+# PowerPoint 바이너리 (소스 관리 제외, .bas/.frm/.xml 소스만 관리)
+*.ppam
+*.pptm
+*.pptx
+*.ppt
+
+# Office 임시 파일
+~$*
+*.tmp
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# VBA 컴파일 캐시
+*.exd
+
+# 개인 설정 (레지스트리에 저장되므로 파일 불필요)
+*.user

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui"
+          onLoad="RibbonOnLoad">
+  <ribbon>
+    <tabs>
+      <tab id="tabEquipSpec" label="설비사양">
+
+        <!-- 검색 및 삽입 그룹 -->
+        <group id="grpSearch" label="사양 검색/삽입">
+          <button id="btnOpenSearch"
+                  label="사양 검색"
+                  screentip="설비사양 검색 패널 열기"
+                  supertip="SharePoint DB에서 설비사양을 검색하여 슬라이드에 삽입합니다."
+                  size="large"
+                  imageMso="FindDialog"
+                  onAction="RibbonOpenSearch"/>
+          <button id="btnApplyShortCode"
+                  label="단축어 치환"
+                  screentip="선택된 텍스트의 단축어를 사양값으로 치환 (Ctrl+Shift+E)"
+                  supertip="텍스트박스에 입력된 !단축어를 SharePoint DB의 사양값으로 치환합니다."
+                  size="large"
+                  imageMso="AutoCorrectOptions"
+                  onAction="RibbonApplyShortCode"/>
+        </group>
+
+        <!-- 캐시 관리 그룹 -->
+        <group id="grpCache" label="캐시 관리">
+          <button id="btnRefreshCache"
+                  label="캐시 새로고침"
+                  screentip="SharePoint에서 최신 사양 목록을 다시 불러옵니다."
+                  supertip="로컬 캐시를 초기화하고 SharePoint에서 전체 사양 목록을 다시 가져옵니다."
+                  size="normal"
+                  imageMso="Refresh"
+                  onAction="RibbonRefreshCache"/>
+          <button id="btnClearCache"
+                  label="캐시 초기화"
+                  screentip="로컬 캐시를 비웁니다."
+                  supertip="메모리에 저장된 로컬 캐시를 모두 삭제합니다. 다음 조회 시 SharePoint에서 새로 불러옵니다."
+                  size="normal"
+                  imageMso="ClearContents"
+                  onAction="RibbonClearCache"/>
+        </group>
+
+        <!-- 설정 그룹 -->
+        <group id="grpSettings" label="설정">
+          <button id="btnSettings"
+                  label="SharePoint 설정"
+                  screentip="SharePoint 사이트 URL 및 연결 설정"
+                  supertip="SharePoint 사이트 URL, List 이름 등 연결 정보를 설정합니다."
+                  size="normal"
+                  imageMso="PropertySheet"
+                  onAction="RibbonOpenSettings"/>
+          <button id="btnAbout"
+                  label="정보"
+                  screentip="Add-in 버전 정보"
+                  supertip="PPT 설비사양 Add-in 버전 및 제작 정보를 표시합니다."
+                  size="normal"
+                  imageMso="Info"
+                  onAction="RibbonAbout"/>
+        </group>
+
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

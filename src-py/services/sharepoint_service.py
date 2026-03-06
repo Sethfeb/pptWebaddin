@@ -3,21 +3,19 @@ sharepoint_service.py
 SharePoint REST API v1 연동 서비스
 
 인증 전략:
-  - requests_ntlm 없이 requests 기본 auth=None 으로 시도 (SharePoint Online은 쿠키/토큰 필요)
-  - Windows 통합 인증(NTLM/Kerberos)은 requests-negotiate-sspi 패키지 필요
-  - 현재는 Windows 자격증명 자동 전달을 위해 requests_ntlm 또는 HttpNegotiateAuth 사용
-  - 패키지 미설치 시 NoAuth 모드로 폴백하고 경고 출력
+  - MSAL OAuth 2.0 Bearer 토큰 사용 (SharePoint Online 표준)
+  - AuthService.get_token() 으로 획득한 access_token을 Authorization 헤더에 전달
+  - 토큰 만료 시 자동 갱신 (MSAL 캐시)
 
 스레드 안전성:
   - Session 객체는 인스턴스 단위로 소유. 멀티스레드 공유 금지.
   - 호출 측에서 스레드별 인스턴스 생성 권장.
 
 메모리/수명:
-  - requests.Session은 with 문 또는 명시적 close() 로 해제.
+  - requests.Session은 close() 로 해제.
   - 본 클래스는 close() 메서드 제공.
 """
-import re
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import requests
 
@@ -26,38 +24,6 @@ from models import SpecRecord
 _LIST_NAME = "EquipmentSpecs"
 _SELECT_FIELDS = "EquipID,ShortCode,SpecName,SpecValue,Unit,Revision"
 _TIMEOUT_SEC = 15
-
-
-def _make_session() -> Tuple[requests.Session, bool]:
-    """
-    Windows 통합 인증 세션 생성 시도.
-    성공 시 (session, True), 실패 시 (기본 세션, False) 반환.
-    """
-    session = requests.Session()
-    session.headers.update({
-        "Accept": "application/json;odata=verbose",
-        "Content-Type": "application/json;odata=verbose",
-    })
-
-    # requests-negotiate-sspi (NTLM/Kerberos 자동 선택) 우선 시도
-    try:
-        from requests_negotiate_sspi import HttpNegotiateAuth  # type: ignore
-        session.auth = HttpNegotiateAuth()
-        return session, True
-    except ImportError:
-        pass
-
-    # requests-ntlm 폴백
-    try:
-        import sspi  # noqa: F401  (pywin32 포함)
-        import requests_ntlm  # type: ignore
-        session.auth = requests_ntlm.HttpNtlmAuth("", "", send_single_token=True)
-        return session, True
-    except (ImportError, Exception):
-        pass
-
-    # 인증 없음 (SharePoint On-Prem 익명 허용 환경 또는 테스트용)
-    return session, False
 
 
 def _odata_escape(value: str) -> str:
@@ -89,21 +55,31 @@ def _parse_items(json_data: dict) -> List[SpecRecord]:
 
 
 class SharePointService:
-    """SharePoint EquipmentSpecs 리스트 조회 서비스."""
+    """SharePoint EquipmentSpecs 리스트 조회 서비스 (MSAL OAuth 인증)."""
 
-    def __init__(self, site_url: str) -> None:
+    def __init__(
+        self,
+        site_url: str,
+        token_provider: Callable[[], str],
+    ) -> None:
         """
         Parameters
         ----------
         site_url : str
             SharePoint 사이트 루트 URL
-            예) https://contoso.sharepoint.com/sites/factory
+            예) https://ati5344.sharepoint.com/sites/atimarketing
+        token_provider : () -> str
+            호출 시마다 유효한 access_token 문자열을 반환하는 콜백.
+            AuthService.get_token() 을 래핑하여 전달.
         """
         self._site_url = site_url.rstrip("/")
+        self._token_provider = token_provider
         self._last_error: str = ""
-        self._session, self._auth_ok = _make_session()
-        if not self._auth_ok:
-            print("[EquipSpec][WARN] Windows 통합 인증 패키지 없음 - 익명 요청으로 진행")
+        self._session = requests.Session()
+        self._session.headers.update({
+            "Accept": "application/json;odata=verbose",
+            "Content-Type": "application/json;odata=verbose",
+        })
 
     # ------------------------------------------------------------------
     # Public API
@@ -146,6 +122,11 @@ class SharePointService:
         )
         return self._get_items(endpoint)
 
+    @property
+    def last_error(self) -> str:
+        """마지막 요청 오류 메시지. 정상이면 빈 문자열."""
+        return self._last_error
+
     def close(self) -> None:
         """HTTP 세션 해제."""
         self._session.close()
@@ -160,24 +141,41 @@ class SharePointService:
     # Internal
     # ------------------------------------------------------------------
 
-    @property
-    def last_error(self) -> str:
-        """마지막 요청 오류 메시지. 정상이면 빈 문자열."""
-        return self._last_error
+    def _get_auth_header(self) -> Optional[str]:
+        """token_provider 호출하여 Bearer 토큰 헤더값 반환. 실패 시 None."""
+        try:
+            token = self._token_provider()
+            return f"Bearer {token}"
+        except Exception as exc:
+            self._last_error = f"인증 토큰 획득 실패: {exc}"
+            print(f"[EquipSpec][ERROR] {self._last_error}")
+            return None
 
     def _get_items(self, endpoint: str) -> List[SpecRecord]:
         """GET 요청 실행 후 SpecRecord 목록 반환. 오류 시 빈 목록."""
         self._last_error = ""
+
+        auth_header = self._get_auth_header()
+        if auth_header is None:
+            return []
+
         try:
-            resp = self._session.get(endpoint, timeout=_TIMEOUT_SEC)
+            resp = self._session.get(
+                endpoint,
+                headers={"Authorization": auth_header},
+                timeout=_TIMEOUT_SEC,
+            )
             resp.raise_for_status()
             return _parse_items(resp.json())
         except requests.exceptions.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "?"
             if status == 401:
-                self._last_error = f"인증 실패 (HTTP 401) — SharePoint 로그인 권한을 확인하세요."
+                self._last_error = "인증 만료 (HTTP 401) — 로그아웃 후 다시 로그인하세요."
             elif status == 403:
-                self._last_error = f"접근 거부 (HTTP 403) — 리스트 읽기 권한이 없습니다."
+                self._last_error = (
+                    "접근 거부 (HTTP 403) — 리스트 읽기 권한이 없습니다.\n"
+                    "SharePoint 사이트 관리자에게 'Sites.Read.All' 권한을 요청하세요."
+                )
             elif status == 404:
                 self._last_error = (
                     f"리스트를 찾을 수 없습니다 (HTTP 404).\n"

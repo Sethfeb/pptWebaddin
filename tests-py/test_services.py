@@ -15,7 +15,7 @@ import os
 import sys
 import time
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, patch as mock_patch
 
 # src-py 경로를 sys.path에 추가
 _SRC = os.path.join(os.path.dirname(__file__), "..", "src-py")
@@ -187,6 +187,93 @@ class TestSharePointUtils(unittest.TestCase):
     def test_parse_items_malformed(self) -> None:
         self.assertEqual(_parse_items({}), [])
         self.assertEqual(_parse_items({"d": {}}), [])
+
+
+# ──────────────────────────────────────────────────────────────────────
+# AuthService 테스트 (MSAL 격리)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestAuthService(unittest.TestCase):
+    def test_normalize_tenant_sharepoint_url(self) -> None:
+        from services.auth_service import AuthService
+        result = AuthService._normalize_tenant(
+            "https://ati5344.sharepoint.com/sites/atimarketing"
+        )
+        self.assertEqual(result, "ati5344.onmicrosoft.com")
+
+    def test_normalize_tenant_domain(self) -> None:
+        from services.auth_service import AuthService
+        result = AuthService._normalize_tenant("ati5344.sharepoint.com")
+        self.assertEqual(result, "ati5344.onmicrosoft.com")
+
+    def test_normalize_tenant_already_normalized(self) -> None:
+        from services.auth_service import AuthService
+        result = AuthService._normalize_tenant("ati5344.onmicrosoft.com")
+        self.assertEqual(result, "ati5344.onmicrosoft.com")
+
+    def test_normalize_tenant_guid(self) -> None:
+        from services.auth_service import AuthService
+        guid = "12345678-1234-1234-1234-123456789012"
+        self.assertEqual(AuthService._normalize_tenant(guid), guid)
+
+    def test_acquire_token_silent_no_account(self) -> None:
+        """캐시에 계정 없으면 None 반환."""
+        from services.auth_service import AuthService
+        with patch("msal.PublicClientApplication") as MockApp:
+            mock_app_inst = MagicMock()
+            mock_app_inst.get_accounts.return_value = []
+            MockApp.return_value = mock_app_inst
+            svc = AuthService.__new__(AuthService)
+            svc._app = mock_app_inst
+            svc._cache = MagicMock()
+            result = svc.acquire_token_silent()
+            self.assertIsNone(result)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# SharePointService (token_provider 기반) 테스트
+# ──────────────────────────────────────────────────────────────────────
+
+class TestSharePointServiceWithToken(unittest.TestCase):
+    def _make_service(self, token: str = "fake_token") -> object:
+        from services.sharepoint_service import SharePointService
+        return SharePointService(
+            site_url="https://ati5344.sharepoint.com/sites/atimarketing",
+            token_provider=lambda: token,
+        )
+
+    def test_token_provider_called_on_request(self) -> None:
+        """요청 시 token_provider가 호출되어 Authorization 헤더에 포함되는지 확인."""
+        from services.sharepoint_service import SharePointService
+        called = []
+        def provider() -> str:
+            called.append(True)
+            return "test_token"
+        svc = SharePointService(
+            site_url="https://example.sharepoint.com/sites/test",
+            token_provider=provider,
+        )
+        with patch.object(svc._session, "get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_resp.json.return_value = {"d": {"results": []}}
+            mock_get.return_value = mock_resp
+            svc.search("test")
+        self.assertTrue(called)
+        call_kwargs = mock_get.call_args[1]
+        self.assertIn("Authorization", call_kwargs.get("headers", {}))
+        self.assertEqual(call_kwargs["headers"]["Authorization"], "Bearer test_token")
+
+    def test_token_provider_failure_returns_empty(self) -> None:
+        """token_provider 예외 시 빈 목록 반환."""
+        from services.sharepoint_service import SharePointService
+        svc = SharePointService(
+            site_url="https://example.sharepoint.com/sites/test",
+            token_provider=lambda: (_ for _ in ()).throw(Exception("auth failed")),
+        )
+        result = svc.search("test")
+        self.assertEqual(result, [])
+        self.assertIn("인증 토큰 획득 실패", svc.last_error)
 
 
 # ──────────────────────────────────────────────────────────────────────
